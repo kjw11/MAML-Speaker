@@ -1,6 +1,6 @@
-Author: Jiawen Kang
+Robust MAML
 -------------------
-Task: MAML-based domain generalization method for multi-condition speaker recognition. 
-Paper: https://arxiv.org/abs/2005.11900
 
-The codes is revised fron MASF codes.
+**_Domain-Invariant Speaker Vector Projection by Model-Agnostic Meta-Learning_**
+
+Paper link: https://arxiv.org/abs/2005.11900
