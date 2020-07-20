@@ -153,9 +153,14 @@ def train(model, saver, sess, exp_string, pairs_dir, resume_itr=0):
             support_losses, query_losses, target_losses = [], [], []
             start_time = time.time()
 
-        if (itr!=0) and itr % FLAGS.infer_interval == 0:
+        if itr == 0:
             saver.save(sess, FLAGS.logdir + '/' + exp_string + '/model' + str(itr))
-            os.system('./infer.sh 2>&1 | tee -a 0516-3-infer.log')
+            os.system('./infer.sh 1 2>&1 | tee -a infer.log ')
+        if (itr!=0) and itr % FLAGS.save_interval == 0:
+            saver.save(sess, FLAGS.logdir + '/' + exp_string + '/model' + str(itr))
+        if (itr!=0) and itr % FLAGS.infer_interval == 0:
+            assert FLAGS.infer_interval % FLAGS.save_interval == 0
+            os.system('./infer.sh 1 2>&1 | tee -a infer.log ')
 
 
 def main():

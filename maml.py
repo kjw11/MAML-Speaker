@@ -19,17 +19,9 @@ class MASF:
         self.inner_lr = FLAGS.inner_lr
         self.outer_lr = FLAGS.outer_lr
         self.metric_lr = FLAGS.metric_lr
-        self.SKIP_LAYER = ['fc8']
-        #self.forward = self.forward_alexnet
         self.forward = self.forward_fc
-        #self.forward = self.forward_metric_net
-        self.forward_metric_net = self.forward_metric_net
-        #self.construct_weights = self.construct_alexnet_weights
         self.construct_weights = self.construct_fc_weights
-        #self.loss_func = xent
-        self.loss_func = self.additive_angular_margin_softmax
-        self.global_loss_func = kd
-        self.WEIGHTS_PATH = '/path/to/pretrained_weights/bvlc_alexnet.npy'
+        self.loss_func = softmax
         self.num_classes = num_classes
         self.KEEP_PROB = 1.0
 
@@ -62,7 +54,6 @@ class MASF:
 
                 # Obtaining the conventional task loss on meta-train
                 _, task_outputa = self.forward(inputa, weights, reuse=reuse, is_training=True)
-                #task_lossa = self.loss_func(task_outputa, labela)
                 task_outputa, task_lossa = self.loss_func(task_outputa, labela, is_training=True, reuse_variables=tf.AUTO_REUSE) #arcsoftmax
 
                 # perform inner update with plain gradient descent on meta-train
@@ -71,9 +62,7 @@ class MASF:
                 gradients = dict(zip(weights.keys(), grads))
                 fast_weights = dict(zip(weights.keys(), [weights[key] - self.inner_lr * tf.clip_by_norm(gradients[key], clip_norm=self.clip_value) for key in weights.keys()]))
                 # compute meta loss
-                new_task_outputa =  self.forward(inputa, fast_weights, reuse=reuse, is_training=True)
                 _, task_outputb = self.forward(inputb, fast_weights, reuse=reuse, is_training=True)
-                #meta_loss = self.loss_func(task_outputb, labelb)
                 task_outputb, meta_loss = self.loss_func(task_outputb, labelb, is_training=True, reuse_variables=tf.AUTO_REUSE) # arcsoftmax
 
                 #task_output = [global_loss, task_lossa, task_lossa1, metric_loss]
@@ -116,7 +105,6 @@ class MASF:
 
             embeddings, _= self.forward(self.test_input, weights)
  
-
         self.embeddings = embeddings
 
 
@@ -158,8 +146,8 @@ class MASF:
         dense3 = fc(dropout2, weights['dense3_weights'], weights['dense3_biases'], activation=None)
         bn3 = tf.layers.batch_normalization(dense3, momentum=0.99, training=is_training,  
                                             name='bn3', reuse=tf.AUTO_REUSE)
-
-        return dense1, bn3
+        relu3 = tf.nn.relu(bn3)
+        return relu1, relu3
 
 
     def additive_angular_margin_softmax(self, features, labels, is_training=None, reuse_variables=None, name="softmax"):
@@ -245,5 +233,34 @@ class MASF:
             loss = tf.losses.sparse_softmax_cross_entropy(labels=labels, logits=updated_logits)
             tf.summary.scalar("arcsoftmax_loss", loss)
     
+        return logits, loss
+
+
+    def softmax(self, features, labels, is_training=None, reuse_variables=None, name="softmax"):
+        """Vanilla softmax loss.
+
+        Args:
+            features: A tensor with shape [batch, dim].
+            labels: A tensor with shape [batch].
+            num_outputs: The number of classes.
+            params: params.weight_l2_regularizer used for L2 regularization.
+            is_training: Not used in this case
+            reuse_variables: Share the created variables or not.
+            name:
+        :return: A scalar tensor which is the loss value.
+        """
+        #assert len(shape_list(features)) == len(shape_list(labels)) + 1
+        num_outputs = self.num_classes
+
+        weight_l2_regularizer = 1e-2
+        labels = tf.to_int32(tf.argmax(labels,1))
+        with tf.variable_scope(name, reuse=reuse_variables):
+            logits = tf.layers.dense(features,
+                                       num_outputs,
+                                       activation=None,
+                                       kernel_regularizer=tf.contrib.layers.l2_regularizer(weight_l2_regularizer),
+                                       name="output")
+            loss = tf.losses.sparse_softmax_cross_entropy(labels, logits)
+
         return logits, loss
 

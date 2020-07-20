@@ -12,13 +12,11 @@ from kaldi_io import write_vec_flt, open_or_fd, read_mat_ark, read_mat_scp, read
 FLAGS = flags.FLAGS
 from tensorflow.python import pywrap_tensorflow
 
-try:
-    os.environ['CUDA_VISIBLE_DEVICES'] = str(sys.argv[1])
-except IndexError:
-    print('No GPU given... setting to 0')
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+os.environ['CUDA_VISIBLE_DEVICES'] = '1'
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '1'
 
 ## Infer option
+flags.DEFINE_integer('num_classes', 2800, 'number of classes')
 flags.DEFINE_string('model_path', './log/04082020/masf_singing.mbs_64.inner0.001.outer0.001.clipNorm2.0.metric0.001.margin10.0', 'model path')
 flags.DEFINE_string('ark_file', './CNdata/train/feats.ark', 'infered vector path')
 flags.DEFINE_string('out_file', './output/800-singing/', 'output.ark dir')
@@ -28,41 +26,25 @@ def predict_ark(model, ark_file_path, out_file_path, sess, vec_nom=False):
     # Testing periodically
     out_file_path = out_file_path+'/output.ark'
     out_file = open_or_fd(out_file_path, 'wb')
+    input_group = []
+    key_group = []
     for index, (key, feature) in enumerate(read_mat_ark(ark_file_path)):
-        test_input = feature
-        #feed_dict = {model.test_input: test_input, model.test_label: test_label, model.KEEP_PROB: 1.}
-        feed_dict = {model.test_input: test_input}
-        output_tensors = [model.embeddings]
-        embeddings = sess.run(output_tensors, feed_dict)
-        if vec_nom:
-            embeddings /=np.sqrt(np.num(np.square(embeddings)))
-        write_vec_flt(out_file ,embeddings[0][0], key=key)
-        #print type(embeddings[0][0])
-        #write_txt(out_file_path ,embeddings[0][0], key)
+        input_group.append(feature)
+        key_group.append(key)
+    feed_dict = {model.test_input: input_group}
+    output_tensors = [model.embeddings]
+    embeddings = sess.run(output_tensors, feed_dict)
 
-def predict_scp(model, scp_file_path, out_file_path, sess, vec_nom=False):
-
-    # Testing periodically
-    out_file_path = out_file_path+'/test/enroll.ark'
-    out_file = open_or_fd(out_file_path, 'wb')
-    lenth = 110000
-    with tqdm(total=lenth) as pbar:
-        for index, (key, feature) in enumerate(read_mat_scp(scp_file_path)):
-            pbar.update(1)
-            test_input = feature
-            feed_dict = {model.test_input: test_input}
-            output_tensors = [model.embeddings]
-            embeddings = sess.run(output_tensors, feed_dict)
-            if vec_nom:
-                embeddings /=np.sqrt(np.num(np.square(embeddings)))
-            write_vec_flt(out_file ,embeddings[0][0], key=key)
-
+    for i in range(len(key_group)):
+        write_vec_flt(out_file ,embeddings[0][i], key=key_group[i])
+   
 
 def write_txt(out_file, ndarray, key):
     with open(out_file, 'w') as f:
         f.write(key+'  ')
         f.write(str(ndarray))
         f.write('\n')
+
 
 def load(path, sess):
     """Load the saved variables.
@@ -71,10 +53,8 @@ def load(path, sess):
     :return The step of the saved model.
     """
     ckpt = tf.train.get_checkpoint_state(path)
-    print path	
     if ckpt and ckpt.model_checkpoint_path:
         ckpt_name = os.path.basename(ckpt.model_checkpoint_path)
-        print (ckpt_name)
         step = int(next(re.finditer("(\d+)(?!.*\d)", ckpt_name)).group(0))
         saver = tf.train.Saver()
         saver.restore(sess, os.path.join(path, ckpt_name))
